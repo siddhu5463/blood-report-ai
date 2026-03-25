@@ -6,11 +6,11 @@ import os
 import json
 from dotenv import load_dotenv
 
-# Load API key from .env file
-load_dotenv()
+# NEW - works both locally and on Streamlit Cloud
+import streamlit as st
 
-# Setup client with new library
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key)
 
 # Updated model name (gemini-1.5-flash is deprecated, use this instead)
 MODEL = "gemini-2.5-flash-lite"   # 1000 free requests/day - most generous free model

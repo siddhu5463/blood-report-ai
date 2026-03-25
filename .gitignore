@@ -35,3 +35,5 @@ build/
 
 # Jupyter notebooks (if any)
 .ipynb_checkpoints/
+# add this line to .gitignore
+.streamlit/secrets.toml
