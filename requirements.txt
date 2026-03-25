@@ -1,0 +1,19 @@
+# ── Core PDF Processing
+pdfplumber==0.11.4
+reportlab==4.2.5
+
+# ── Google Gemini AI
+google-genai==1.10.0
+
+# ── Environment Variables
+python-dotenv==1.0.1
+
+# ── Dashboard & Visualization
+streamlit==1.43.2
+plotly==6.0.1
+
+# ── Data Handling
+pandas==2.2.3
+
+# ── (Optional) Groq AI - alternative to Gemini
+groq==0.15.0

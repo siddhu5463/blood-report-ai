@@ -1,0 +1,37 @@
+# API Keys - NEVER commit these
+.env
+.env.local
+.env.*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Temp files created by the app
+temp_*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Jupyter notebooks (if any)
+.ipynb_checkpoints/
