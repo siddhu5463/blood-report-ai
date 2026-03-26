@@ -9,7 +9,16 @@ from dotenv import load_dotenv
 # NEW - works both locally and on Streamlit Cloud
 import streamlit as st
 
-api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+# NEW - safe version that never crashes
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    api_key = os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    st.error("❌ GEMINI_API_KEY not found. Please add it to Streamlit secrets.")
+    st.stop()
+
 client = genai.Client(api_key=api_key)
 
 # Updated model name (gemini-1.5-flash is deprecated, use this instead)
