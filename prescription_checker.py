@@ -139,7 +139,11 @@ def print_prescription_check(report):
 
 # ---- TEST ----
 if __name__ == "__main__":
+    import logging
+
     from medicine_db import load_medicines, get_medicine_suggestions
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     medicines = load_medicines()
 

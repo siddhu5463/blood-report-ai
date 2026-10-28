@@ -127,7 +127,7 @@ Phase 1: pdf_extractor.py
     │
     ▼
 Phase 2: ai_analyzer.py
-    Sends values to Gemini AI → returns structured JSON analysis
+    Sends values + patient age/sex to Gemini AI → JSON checked against a schema
     │
     ▼
 Phase 3: medicine_db.py
@@ -185,9 +185,22 @@ doctor prescribed **any** of the options suggested for it.
 | Vitamins   | Vitamin D (25-OH)                               |
 
 Common lab spellings are recognised too (e.g. "Hemoglobin A1c", "LDL Cholesterol", "SGOT",
-"Estradiol (E2)"). The report's own printed reference range is used when there is one;
-otherwise a built-in default range is used. Free Testosterone has no default, because its
-range depends on the units, so it is only read when the report prints a range.
+"Estradiol (E2)").
+
+**Reference ranges.** The report's own printed range is always used when there is one.
+Otherwise a built-in adult range is used, adjusted for:
+
+- **Sex** — read from the report ("Gender: Female", "Sex: M"), or set in the app's sidebar.
+  Female ranges are used for testosterone, hemoglobin, hematocrit, RBC, creatinine, HDL and
+  DHEA. Estradiol, progesterone, FSH and LH depend on the menstrual cycle, so for women they
+  need the report's own range. If sex isn't found, the general (male) ranges are used and the
+  app shows a warning.
+- **Units** — common SI units are converted (e.g. glucose in mmol/L, testosterone in nmol/L,
+  creatinine in µmol/L).
+
+When there's no safe range (an unknown unit, Free Testosterone without a printed range, or a
+cycle-dependent hormone for a woman) the test is shown with status **Unknown** (grey) and is
+never flagged High or Low.
 
 ---
 
@@ -198,6 +211,7 @@ range depends on the units, so it is only read when the report prints a range.
 | Python 3.10+          | Core language                  |
 | pdfplumber            | PDF text extraction            |
 | google-genai          | Gemini AI API                  |
+| pydantic              | Validates the AI's JSON reply  |
 | Streamlit             | Web dashboard                  |
 | Plotly                | Interactive charts             |
 | Pandas                | Data handling                  |

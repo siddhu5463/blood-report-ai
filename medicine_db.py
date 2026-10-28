@@ -5,9 +5,12 @@
 # ONLY suggests medicines from our internal list - nothing external
 
 import json
+import logging
 import os
 
 from pdf_extractor import canonical_marker
+
+logger = logging.getLogger(__name__)
 
 # Look for medicines.json next to this file, so it works from any folder
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "medicines.json")
@@ -29,13 +32,13 @@ def load_medicines(json_path=DEFAULT_DB_PATH):
     Returns a list of medicine dictionaries.
     """
     if not os.path.exists(json_path):
-        print(f"❌ medicines.json not found at {json_path}")
+        logger.error("❌ medicines.json not found at %s", json_path)
         return []
 
     with open(json_path, "r") as f:
         medicines = json.load(f)
 
-    print(f"✅ Loaded {len(medicines)} medicines from database")
+    logger.info("✅ Loaded %d medicines from database", len(medicines))
     return medicines
 
 
@@ -143,6 +146,8 @@ def print_suggestions(suggestions):
 
 # ---- TEST ----
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     # Load medicines from JSON file
     medicines = load_medicines()

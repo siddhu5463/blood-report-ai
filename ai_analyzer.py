@@ -2,9 +2,15 @@
 
 from google import genai          # new library name
 from google.genai import types
-import os
 import json
+import logging
+import os
+from typing import List, Literal
+
 from dotenv import load_dotenv
+from pydantic import BaseModel, ValidationError
+
+logger = logging.getLogger(__name__)
 
 # Reads GEMINI_API_KEY from a local .env file (if there is one).
 # On Streamlit Cloud, app.py copies st.secrets into the environment instead.
@@ -28,6 +34,26 @@ def get_client():
 MODEL = "gemini-2.5-flash-lite"   # 1000 free requests/day - most generous free model
 
 
+# The exact shape we want back. Gemini is told to follow this schema,
+# and we check the reply against it before the rest of the app uses it.
+class FlaggedValue(BaseModel):
+    test:             str   # name exactly as in our results, e.g. "Estradiol"
+    value:            str   # value with unit, e.g. "42 pg/mL"
+    issue:            Literal["High", "Low"]
+    explanation:      str
+    within_hrt_scope: bool
+    action:           Literal["Monitor", "Refer to Specialist", "Adjust Treatment"]
+
+
+class BloodAnalysis(BaseModel):
+    summary:             str
+    flagged_values:      List[FlaggedValue]
+    within_scope_count:  int
+    refer_to_specialist: bool
+    referral_reason:     str
+    overall_status:      Literal["Good", "Needs Attention", "Urgent"]
+
+
 def build_prompt(blood_values, patient_info=None):
     """
     Builds the instruction we send to Gemini.
@@ -37,6 +63,15 @@ def build_prompt(blood_values, patient_info=None):
     for test, data in blood_values.items():
         ref = data.get("ref_range", "N/A")
         values_text += f"  - {test}: {data['value']} {data['unit']} (Status: {data['status']}, Reference: {ref})\n"
+
+    # Age and sex change what's normal for hormones, so tell the AI when we know them
+    patient_info = patient_info or {}
+    patient_text = ", ".join(
+        part for part in (
+            f"{patient_info['age']} years old" if patient_info.get("age") else "",
+            patient_info.get("sex", ""),
+        ) if part
+    ) or "unknown"
 
     prompt = f"""
 You are a medical data analyst assistant for an HRT (Hormone Replacement Therapy) clinic.
@@ -49,48 +84,48 @@ IMPORTANT RULES:
    mark it as "REFER TO SPECIALIST" immediately.
 4. Keep language simple and clear.
 
+PATIENT: {patient_text}
+
 PATIENT BLOOD TEST RESULTS:
 {values_text}
-
-Please respond ONLY with a valid JSON object in this exact format:
-{{
-  "summary": "2-3 sentence plain English overview of the results",
-  "flagged_values": [
-    {{
-      "test": "test name",
-      "value": "the value with unit",
-      "issue": "High or Low",
-      "explanation": "simple explanation of what this means",
-      "within_hrt_scope": true or false,
-      "action": "Monitor / Refer to Specialist / Adjust Treatment"
-    }}
-  ],
-  "within_scope_count": number of issues within HRT scope,
-  "refer_to_specialist": true or false,
-  "referral_reason": "reason if refer_to_specialist is true, else empty string",
-  "overall_status": "Good / Needs Attention / Urgent"
-}}
-
-Only include tests that are flagged High or Low in flagged_values.
-Use each test name exactly as it is written in the results above.
-If all values are normal return an empty array for flagged_values.
-Return ONLY the JSON object. No extra text, no markdown, no code blocks.
+Fill in the response fields like this:
+- summary: 2-3 sentence plain English overview of the results
+- flagged_values: one entry per test whose Status is High or Low (empty if all are normal).
+  Use each test name exactly as it is written in the results above.
+  Skip tests whose Status is Unknown, but you may mention them in the summary.
+- within_scope_count: number of flagged issues within HRT scope
+- referral_reason: reason if refer_to_specialist is true, else an empty string
 """
     return prompt
+
+
+def _strip_code_fence(text):
+    """Removes ```json ... ``` in case the model wraps its JSON anyway."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    return cleaned.strip()
+
+
+def _was_cut_off(response):
+    candidates = getattr(response, "candidates", None) or []
+    return bool(candidates) and getattr(candidates[0], "finish_reason", None) == types.FinishReason.MAX_TOKENS
 
 
 def analyze_blood_report(blood_values, patient_info=None):
     """
     Sends blood values to Gemini and returns structured analysis.
+    Always returns a dict — on failure it has an "error" key.
     """
-    print("🤖 Sending blood values to Gemini AI...")
+    logger.info("🤖 Sending blood values to Gemini AI...")
 
     client = get_client()
     if client is None:
         return {"error": "GEMINI_API_KEY not found. Add it to your .env file or Streamlit secrets."}
 
     prompt = build_prompt(blood_values, patient_info)
-    raw_response = ""
 
     try:
         # New way to call Gemini with updated library
@@ -99,32 +134,35 @@ def analyze_blood_report(blood_values, patient_info=None):
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.2,   # low temperature = more consistent/factual responses
-                max_output_tokens=1500,
+                max_output_tokens=4096,
+                response_mime_type="application/json",   # ask for JSON only...
+                response_schema=BloodAnalysis,           # ...in exactly this shape
             )
         )
-
-        raw_response = response.text or ""
-        print("✅ Got response from Gemini!")
-
-        # Clean up response in case AI adds ```json blocks anyway
-        cleaned = raw_response.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("```")[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-        cleaned = cleaned.strip()
-
-        # Parse JSON
-        analysis = json.loads(cleaned)
-        return analysis
-
-    except json.JSONDecodeError:
-        print("⚠️  AI response was not valid JSON, returning raw text")
-        return {"raw_response": raw_response, "error": "Could not parse JSON"}
-
     except Exception as e:
-        print(f"❌ Error calling Gemini API: {e}")
+        logger.error("❌ Error calling Gemini API: %s", e)
         return {"error": str(e)}
+
+    raw_response = response.text or ""
+    logger.info("✅ Got response from Gemini!")
+
+    if _was_cut_off(response):
+        logger.warning("⚠️  AI response was cut off")
+        return {"raw_response": raw_response, "error": "AI response was cut off before it finished"}
+
+    if not raw_response:
+        return {"error": "AI returned an empty response (it may have been blocked by safety filters)"}
+
+    try:
+        analysis = BloodAnalysis.model_validate(json.loads(_strip_code_fence(raw_response)))
+    except json.JSONDecodeError:
+        logger.warning("⚠️  AI response was not valid JSON, returning raw text")
+        return {"raw_response": raw_response, "error": "Could not parse JSON"}
+    except ValidationError as e:
+        logger.warning("⚠️  AI response did not match the expected format: %s", e)
+        return {"raw_response": raw_response, "error": "AI response did not match the expected format"}
+
+    return analysis.model_dump()
 
 
 def print_analysis(analysis):
@@ -180,5 +218,6 @@ if __name__ == "__main__":
         "HbA1c":           {"value": 5.9,  "unit": "%",     "status": "High",   "ref_range": "0 - 5.7"},
     }
 
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     analysis = analyze_blood_report(test_blood_values)
     print_analysis(analysis)
