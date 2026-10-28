@@ -57,6 +57,10 @@ def find_medicines_for_flag(test_name, direction, medicines):
     matches   = []
 
     for med in medicines:
+        # Products marked outside HRT scope are kept in the database but never suggested
+        if not med.get("within_hrt_scope", True):
+            continue
+
         # "targets" maps each marker to the direction this medicine treats,
         # e.g. Levothyroxine: {"TSH": "High", "Free T4": "Low"}
         if med["targets"].get(marker) == direction:

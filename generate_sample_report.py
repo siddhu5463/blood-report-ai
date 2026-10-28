@@ -129,7 +129,7 @@ def generate_blood_report(filename="sample_blood_report.pdf"):
     # ---- BUILD THE PDF ----
     doc.build(story)
     print(f"✅ Sample blood report created: {filename}")
-    print(f"   Open it to see what it looks like!")
+    print("   Open it to see what it looks like!")
 
 
 # Run it

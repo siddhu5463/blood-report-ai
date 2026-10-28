@@ -129,11 +129,11 @@ def print_prescription_check(report):
         for m in report["missed_suggestions"]:
             print(f"   • {m['name']}  →  for {m['test']} ({m['issue']})")
 
-    print(f"\n📊 Summary:")
+    print("\n📊 Summary:")
     print(f"   Issues covered  : {report['covered_issues']}/{report['total_issues']}")
     print(f"   AI suggested    : {report['total_ai_suggested']} medicines")
     print(f"   Doctor prescribed: {report['total_prescribed']} medicines")
-    print(f"\n⚕️  REMINDER: Doctor has final authority. AI is advisory only.")
+    print("\n⚕️  REMINDER: Doctor has final authority. AI is advisory only.")
     print("="*60 + "\n")
 
 

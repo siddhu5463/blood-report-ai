@@ -16,9 +16,6 @@ venv/
 env/
 ENV/
 
-# Temp files created by the app
-temp_*.pdf
-
 # OS files
 .DS_Store
 Thumbs.db
@@ -35,7 +32,12 @@ build/
 
 # Jupyter notebooks (if any)
 .ipynb_checkpoints/
-# add this line to .gitignore
+
+# Streamlit Cloud secrets (holds the API key)
 .streamlit/secrets.toml
+
+# Sample report made by generate_sample_report.py
+sample_blood_report.pdf
+
 # Test cache
 .pytest_cache/

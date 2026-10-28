@@ -35,11 +35,13 @@ blood-report-ai/
 ├── main.py                    # Terminal pipeline (runs all phases)
 ├── generate_sample_report.py  # Generates a fake blood report PDF for testing
 ├── tests/                     # pytest test suite
+├── .github/workflows/         # CI: lint + tests on every push
 │
-├── .env                       # API keys (never commit this to GitHub!)
-├── .gitignore                 # Excludes .env and temp files
+├── .env                       # API keys — you create this (never commit it!)
+├── .gitignore                 # Excludes .env, secrets and generated files
 ├── requirements.txt           # All Python dependencies
-├── requirements-dev.txt       # Dependencies + pytest
+├── requirements-dev.txt       # Dependencies + pytest + ruff
+├── ruff.toml                  # Lint settings
 └── README.md                  # This file
 ```
 
@@ -50,7 +52,7 @@ blood-report-ai/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/blood-report-ai.git
+git clone https://github.com/siddhu5463/blood-report-ai.git
 cd blood-report-ai
 ```
 
@@ -77,6 +79,8 @@ GEMINI_API_KEY=AIzaSy_paste_your_key_here
 
 > ⚠️ Never commit your `.env` file to GitHub. It is already listed in `.gitignore`.
 
+On **Streamlit Cloud**, add `GEMINI_API_KEY` under the app's *Settings → Secrets* instead.
+
 ### 5. Generate a sample blood report (optional)
 
 ```bash
@@ -85,14 +89,16 @@ python generate_sample_report.py
 
 This creates `sample_blood_report.pdf` for testing.
 
-### 6. Run the tests (optional)
+### 6. Run the tests and linter (optional)
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
+ruff check .
 ```
 
-The tests never call the Gemini API, so no API key is needed.
+The tests never call the Gemini API, so no API key is needed. GitHub Actions runs both
+on every push and pull request (Python 3.10 and 3.13).
 
 ---
 
@@ -112,7 +118,13 @@ Opens at `http://localhost:8501` in your browser.
 python main.py sample_blood_report.pdf
 ```
 
-Prints full analysis directly in the terminal.
+Prints the extracted values, the AI analysis and the medicine suggestions in the terminal.
+Add `--rx` to also check a prescription (Phase 4), and `--sex` if the report doesn't say:
+
+```bash
+python main.py sample_blood_report.pdf --rx "Anastrozole, Metformin 500mg, Aspirin"
+python main.py some_report.pdf --sex Female
+```
 
 ---
 
@@ -164,6 +176,9 @@ Medicines are stored in `medicines.json`. Each entry looks like:
 medicine can treat different directions for different markers — e.g. Levothyroxine is
 `{"TSH": "High", "Free T3": "Low", "Free T4": "Low"}`. Marker names must match the names in
 the table below (the test suite checks this).
+
+Set `within_hrt_scope` to `false` to keep a product in the database without it ever being
+suggested.
 
 To add new medicines, simply add entries to `medicines.json` — no code changes needed.
 
@@ -217,6 +232,7 @@ never flagged High or Low.
 | Pandas                | Data handling                  |
 | reportlab             | Sample PDF generation          |
 | python-dotenv         | Environment variable management|
+| pytest / ruff         | Tests and linting              |
 
 ---
 
@@ -225,22 +241,16 @@ never flagged High or Low.
 | Variable         | Description                    | Required |
 |------------------|--------------------------------|----------|
 | `GEMINI_API_KEY` | Google AI Studio API key       | ✅ Yes   |
-| `GROQ_API_KEY`   | Groq API key (optional backup) | ❌ No    |
 
 ---
 
-## 📝 .gitignore
+## 🔒 Privacy
 
-Make sure your `.gitignore` contains:
-
-```
-.env
-__pycache__/
-*.pyc
-temp_*.pdf
-*.egg-info/
-.venv/
-```
+The extracted lab values, plus the patient's age and sex, are sent to Google's Gemini API.
+Names and IDs are not sent. On the **free tier, Google may use submitted data to improve its
+products**, so only use the sample report or other made-up data with a free key. Real patient
+data would need a paid plan with a proper data-processing agreement (and HIPAA/GDPR review),
+plus authentication on the app.
 
 ---
 

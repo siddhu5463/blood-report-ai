@@ -48,7 +48,6 @@ class FlaggedValue(BaseModel):
 class BloodAnalysis(BaseModel):
     summary:             str
     flagged_values:      List[FlaggedValue]
-    within_scope_count:  int
     refer_to_specialist: bool
     referral_reason:     str
     overall_status:      Literal["Good", "Needs Attention", "Urgent"]
@@ -93,7 +92,6 @@ Fill in the response fields like this:
 - flagged_values: one entry per test whose Status is High or Low (empty if all are normal).
   Use each test name exactly as it is written in the results above.
   Skip tests whose Status is Unknown, but you may mention them in the summary.
-- within_scope_count: number of flagged issues within HRT scope
 - referral_reason: reason if refer_to_specialist is true, else an empty string
 """
     return prompt

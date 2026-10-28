@@ -28,7 +28,6 @@ ANALYSIS = {
         "explanation": "Blood sugar is above the normal range.",
         "within_hrt_scope": True, "action": "Monitor",
     }],
-    "within_scope_count": 1,
     "refer_to_specialist": False,
     "referral_reason": "",
     "overall_status": "Needs Attention",

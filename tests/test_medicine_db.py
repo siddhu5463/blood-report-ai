@@ -58,3 +58,9 @@ def test_no_match_in_database(medicines):
     [item] = get_medicine_suggestions([{"test": "Sodium", "issue": "Low", "within_hrt_scope": True}], medicines)
     assert item["action"] == "No match in database"
     assert item["medicines"] == []
+
+
+def test_out_of_scope_products_are_never_suggested(medicines):
+    statin = {"id": "MED999", "name": "Atorvastatin", "type": "oral tablet",
+              "targets": {"LDL": "High"}, "dosage": "", "notes": "", "within_hrt_scope": False}
+    assert names(find_medicines_for_flag("LDL", "High", medicines + [statin])) == ["Omega-3 Fish Oil"]

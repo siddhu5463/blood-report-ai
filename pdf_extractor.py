@@ -308,10 +308,20 @@ def extract_patient_info(text):
     """
     info = {}
 
-    # Look for a date pattern like 01/15/2024 or 2024-01-15
-    date_match = re.search(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', text)
-    if date_match:
-        info["report_date"] = date_match.group(1)
+    # Look for a date pattern like 01/15/2024 or 2024-01-15.
+    # Prefer a labelled report/collection date, and never use the date of birth
+    # (on many reports it's the first date on the page).
+    date = r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\b'
+    label = r'(?:Report(?:ed)?|Collect(?:ion|ed)|Sample|Test|Specimen)\s*(?:Date)?\s*[:\-]?\s*'
+    labelled = re.search(label + date, text, re.IGNORECASE)
+    if labelled:
+        info["report_date"] = labelled.group(1)
+    else:
+        for match in re.finditer(date, text):
+            before = text[max(0, match.start() - 20):match.start()].lower()
+            if "birth" not in before and "dob" not in before and "d.o.b" not in before:
+                info["report_date"] = match.group(1)
+                break
 
     # Look for age pattern like "Age: 45" or "45 years"
     age_match = re.search(r'Age[:\s]+(\d+)', text, re.IGNORECASE)

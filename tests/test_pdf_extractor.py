@@ -232,3 +232,19 @@ def test_conversion_tables_cover_known_markers():
 def test_default_range_round_trip():
     # 300-1000 ng/dL testosterone expressed in nmol/L
     assert default_range("Testosterone", "nmol/L") == (10.4, 34.7)
+
+
+# ── Report date
+
+@pytest.mark.parametrize("text, expected", [
+    ("Date of Birth: 05/22/1978   Report Date: 03/15/2024", "03/15/2024"),
+    ("DOB: 05/22/1978\nCollected: 2024-03-15", "2024-03-15"),
+    ("D.O.B. 05/22/1978   Printed 01/02/2024", "01/02/2024"),
+    ("Patient: Jo\nDate: 2024-03-15", "2024-03-15"),
+])
+def test_report_date(text, expected):
+    assert extract_patient_info(text)["report_date"] == expected
+
+
+def test_date_of_birth_is_never_the_report_date():
+    assert "report_date" not in extract_patient_info("Date of Birth: 05/22/1978")
