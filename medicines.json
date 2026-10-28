@@ -4,8 +4,7 @@
     "name": "Testosterone Cypionate",
     "type": "injection",
     "treats": ["Low Testosterone"],
-    "targets": ["Testosterone"],
-    "direction": "Low",
+    "targets": {"Testosterone": "Low"},
     "dosage": "100-200mg every 1-2 weeks",
     "notes": "Standard HRT testosterone replacement",
     "within_hrt_scope": true
@@ -15,8 +14,7 @@
     "name": "Estradiol Patch",
     "type": "patch",
     "treats": ["Low Estradiol"],
-    "targets": ["Estradiol"],
-    "direction": "Low",
+    "targets": {"Estradiol": "Low"},
     "dosage": "0.05mg/day patch, change twice weekly",
     "notes": "Used in female HRT programs",
     "within_hrt_scope": true
@@ -26,8 +24,7 @@
     "name": "Anastrozole",
     "type": "oral tablet",
     "treats": ["High Estradiol"],
-    "targets": ["Estradiol"],
-    "direction": "High",
+    "targets": {"Estradiol": "High"},
     "dosage": "0.5mg twice per week",
     "notes": "Aromatase inhibitor - reduces excess estrogen",
     "within_hrt_scope": true
@@ -37,8 +34,7 @@
     "name": "DHEA Supplement",
     "type": "oral capsule",
     "treats": ["Low DHEA"],
-    "targets": ["DHEA"],
-    "direction": "Low",
+    "targets": {"DHEA": "Low"},
     "dosage": "25-50mg daily in the morning",
     "notes": "Adrenal hormone precursor supplement",
     "within_hrt_scope": true
@@ -48,8 +44,7 @@
     "name": "Progesterone Capsule",
     "type": "oral capsule",
     "treats": ["Low Progesterone"],
-    "targets": ["Progesterone"],
-    "direction": "Low",
+    "targets": {"Progesterone": "Low"},
     "dosage": "100-200mg at bedtime",
     "notes": "Bioidentical progesterone for HRT",
     "within_hrt_scope": true
@@ -59,8 +54,7 @@
     "name": "Levothyroxine",
     "type": "oral tablet",
     "treats": ["Hypothyroidism", "High TSH"],
-    "targets": ["TSH", "T3", "T4"],
-    "direction": "High",
+    "targets": {"TSH": "High", "Free T3": "Low", "Free T4": "Low"},
     "dosage": "25-100mcg daily on empty stomach",
     "notes": "Thyroid hormone replacement",
     "within_hrt_scope": true
@@ -70,10 +64,9 @@
     "name": "Vitamin D3",
     "type": "oral supplement",
     "treats": ["Low Vitamin D", "General Wellness"],
-    "targets": ["Glucose", "HbA1c"],
-    "direction": "High",
+    "targets": {"Vitamin D": "Low"},
     "dosage": "2000-5000 IU daily with food",
-    "notes": "Supports metabolic and hormonal health",
+    "notes": "Vitamin D replacement for low 25-OH Vitamin D levels",
     "within_hrt_scope": true
   },
   {
@@ -81,8 +74,7 @@
     "name": "Metformin",
     "type": "oral tablet",
     "treats": ["High Glucose", "High HbA1c"],
-    "targets": ["Glucose", "HbA1c"],
-    "direction": "High",
+    "targets": {"Glucose": "High", "HbA1c": "High"},
     "dosage": "500mg twice daily with meals",
     "notes": "Blood sugar management - refer to endocrinologist if severe",
     "within_hrt_scope": true
@@ -92,8 +84,7 @@
     "name": "Omega-3 Fish Oil",
     "type": "oral supplement",
     "treats": ["High Triglycerides", "High Cholesterol"],
-    "targets": ["Triglycerides", "Cholesterol", "LDL Cholesterol"],
-    "direction": "High",
+    "targets": {"Triglycerides": "High", "Cholesterol": "High", "LDL": "High"},
     "dosage": "2-4g daily with meals",
     "notes": "Natural lipid management supplement",
     "within_hrt_scope": true
@@ -103,8 +94,7 @@
     "name": "Cortisol Manager",
     "type": "oral supplement",
     "treats": ["High Cortisol", "Adrenal Stress"],
-    "targets": ["Cortisol"],
-    "direction": "High",
+    "targets": {"Cortisol": "High"},
     "dosage": "1 capsule at bedtime",
     "notes": "Adaptogen blend for cortisol regulation",
     "within_hrt_scope": true

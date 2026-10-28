@@ -6,20 +6,23 @@ import os
 import json
 from dotenv import load_dotenv
 
-# NEW - works both locally and on Streamlit Cloud
-import streamlit as st
+# Reads GEMINI_API_KEY from a local .env file (if there is one).
+# On Streamlit Cloud, app.py copies st.secrets into the environment instead.
+load_dotenv()
 
-# NEW - safe version that never crashes
-try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    api_key = os.getenv("GEMINI_API_KEY")
+_client = None
 
-if not api_key:
-    st.error("❌ GEMINI_API_KEY not found. Please add it to Streamlit secrets.")
-    st.stop()
 
-client = genai.Client(api_key=api_key)
+def get_client():
+    """Creates the Gemini client the first time it's needed. Returns None if no API key is set."""
+    global _client
+    if _client is None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return None
+        _client = genai.Client(api_key=api_key)
+    return _client
+
 
 # Updated model name (gemini-1.5-flash is deprecated, use this instead)
 MODEL = "gemini-2.5-flash-lite"   # 1000 free requests/day - most generous free model
@@ -69,6 +72,7 @@ Please respond ONLY with a valid JSON object in this exact format:
 }}
 
 Only include tests that are flagged High or Low in flagged_values.
+Use each test name exactly as it is written in the results above.
 If all values are normal return an empty array for flagged_values.
 Return ONLY the JSON object. No extra text, no markdown, no code blocks.
 """
@@ -81,7 +85,12 @@ def analyze_blood_report(blood_values, patient_info=None):
     """
     print("🤖 Sending blood values to Gemini AI...")
 
+    client = get_client()
+    if client is None:
+        return {"error": "GEMINI_API_KEY not found. Add it to your .env file or Streamlit secrets."}
+
     prompt = build_prompt(blood_values, patient_info)
+    raw_response = ""
 
     try:
         # New way to call Gemini with updated library
@@ -94,7 +103,7 @@ def analyze_blood_report(blood_values, patient_info=None):
             )
         )
 
-        raw_response = response.text
+        raw_response = response.text or ""
         print("✅ Got response from Gemini!")
 
         # Clean up response in case AI adds ```json blocks anyway

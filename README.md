@@ -34,10 +34,12 @@ blood-report-ai/
 ├── medicines.json             # Internal medicine/product database
 ├── main.py                    # Terminal pipeline (runs all phases)
 ├── generate_sample_report.py  # Generates a fake blood report PDF for testing
+├── tests/                     # pytest test suite
 │
 ├── .env                       # API keys (never commit this to GitHub!)
 ├── .gitignore                 # Excludes .env and temp files
 ├── requirements.txt           # All Python dependencies
+├── requirements-dev.txt       # Dependencies + pytest
 └── README.md                  # This file
 ```
 
@@ -82,6 +84,15 @@ python generate_sample_report.py
 ```
 
 This creates `sample_blood_report.pdf` for testing.
+
+### 6. Run the tests (optional)
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests never call the Gemini API, so no API key is needed.
 
 ---
 
@@ -142,15 +153,22 @@ Medicines are stored in `medicines.json`. Each entry looks like:
   "id": "MED001",
   "name": "Testosterone Cypionate",
   "type": "injection",
-  "targets": ["Testosterone"],
-  "direction": "Low",
+  "targets": {"Testosterone": "Low"},
   "dosage": "100-200mg every 1-2 weeks",
   "notes": "Standard HRT testosterone replacement",
   "within_hrt_scope": true
 }
 ```
 
+`targets` maps each blood marker to the result it treats (`"High"` or `"Low"`), so one
+medicine can treat different directions for different markers — e.g. Levothyroxine is
+`{"TSH": "High", "Free T3": "Low", "Free T4": "Low"}`. Marker names must match the names in
+the table below (the test suite checks this).
+
 To add new medicines, simply add entries to `medicines.json` — no code changes needed.
+
+The prescription match score is per flagged issue: an issue counts as covered when the
+doctor prescribed **any** of the options suggested for it.
 
 ---
 
@@ -158,12 +176,18 @@ To add new medicines, simply add entries to `medicines.json` — no code changes
 
 | Category   | Markers                                          |
 |------------|--------------------------------------------------|
-| Hormones   | Testosterone, Estradiol, FSH, LH, DHEA, Progesterone, Cortisol |
+| Hormones   | Testosterone, Free Testosterone, Estradiol, FSH, LH, DHEA (DHEA-S), Progesterone, Cortisol |
 | Thyroid    | TSH, Free T3, Free T4                            |
 | Metabolic  | Glucose, HbA1c, Creatinine, Sodium, Potassium   |
 | Liver      | ALT, AST                                         |
 | Lipids     | Cholesterol, HDL, LDL, Triglycerides            |
 | CBC        | Hemoglobin, Hematocrit, WBC, RBC, Platelets     |
+| Vitamins   | Vitamin D (25-OH)                               |
+
+Common lab spellings are recognised too (e.g. "Hemoglobin A1c", "LDL Cholesterol", "SGOT",
+"Estradiol (E2)"). The report's own printed reference range is used when there is one;
+otherwise a built-in default range is used. Free Testosterone has no default, because its
+range depends on the units, so it is only read when the report prints a range.
 
 ---
 

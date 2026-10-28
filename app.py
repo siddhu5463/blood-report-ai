@@ -9,6 +9,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import json
+import os
 
 from pdf_extractor        import process_blood_report
 from ai_analyzer          import analyze_blood_report
@@ -21,6 +22,13 @@ st.set_page_config(
     page_icon="🩺",
     layout="wide"
 )
+
+# ── On Streamlit Cloud the API key lives in st.secrets — pass it on to ai_analyzer
+try:
+    if "GEMINI_API_KEY" in st.secrets and not os.getenv("GEMINI_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    pass  # no secrets.toml — fall back to .env / environment variable
 
 # ── Custom CSS for cleaner look
 st.markdown("""
@@ -284,9 +292,9 @@ if uploaded_file:
                     )
 
                     col1, col2, col3 = st.columns(3)
-                    col1.metric("AI Suggested",      report["total_ai_suggested"])
-                    col2.metric("Doctor Prescribed", report["total_prescribed"])
-                    col3.metric("Matched",           len(report["matched"]))
+                    col1.metric("Issues with Suggestions", report["total_issues"])
+                    col2.metric("Doctor Prescribed",       report["total_prescribed"])
+                    col3.metric("Issues Covered",          report["covered_issues"])
 
                     # Matched
                     if report["matched"]:
@@ -302,7 +310,7 @@ if uploaded_file:
 
                     # Missed
                     if report["missed_suggestions"]:
-                        st.warning(f"⚠️ **Missed ({len(report['missed_suggestions'])})** — AI suggested but not prescribed")
+                        st.warning(f"⚠️ **Not Covered ({len(report['missed_suggestions'])})** — none of the suggested options were prescribed")
                         for m in report["missed_suggestions"]:
                             st.markdown(f"- **{m['name']}** → for {m['test']} ({m['issue']})")
 

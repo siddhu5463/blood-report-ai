@@ -5,69 +5,95 @@
 # Show a match score and highlight mismatches
 # Doctor ALWAYS has final authority - this is just a review tool
 
+def _normalize(name):
+    """Lowercase and collapse spaces, so "  Metformin " == "metformin"."""
+    return " ".join(name.lower().split())
+
+
+def _is_prescribed(medicine_name, prescription_line):
+    """
+    True if a prescription line names this medicine.
+    Allows a dose after the name, e.g. "Metformin 500mg" matches "Metformin".
+    """
+    med  = _normalize(medicine_name)
+    line = _normalize(prescription_line)
+    return line == med or line.startswith(med + " ")
+
+
 def check_prescription(doctor_prescription, ai_suggestions):
     """
     Compares doctor's prescription against AI medicine suggestions.
 
     doctor_prescription = list of medicine names doctor prescribed
-                          e.g. ["Anastrozole", "Metformin", "Omega-3 Fish Oil"]
+                          e.g. ["Anastrozole", "Metformin 500mg", "Omega-3 Fish Oil"]
 
     ai_suggestions      = output from medicine_db.get_medicine_suggestions()
+
+    The score is per flagged issue: an issue counts as covered when the doctor
+    prescribed ANY of the options suggested for it. One medicine can cover
+    several issues (Metformin covers High Glucose and High HbA1c), and the
+    doctor is not penalised for picking one option out of several.
 
     Returns a detailed match report
     """
 
-    # Collect all AI suggested medicine names into a flat list
-    ai_medicines = []
-    for suggestion in ai_suggestions:
-        for med in suggestion.get("medicines", []):
-            ai_medicines.append({
-                "name":  med["name"],
-                "test":  suggestion["test"],
-                "issue": suggestion["issue"]
-            })
+    # Remove blank and duplicate lines, keeping the doctor's order
+    prescribed = []
+    for line in doctor_prescription:
+        if line.strip() and _normalize(line) not in [_normalize(p) for p in prescribed]:
+            prescribed.append(line.strip())
 
-    ai_medicine_names = [m["name"].lower() for m in ai_medicines]
-    doctor_lower      = [d.lower().strip() for d in doctor_prescription]
+    # Only issues that have at least one medicine option can be scored
+    issues = [s for s in ai_suggestions if s.get("medicines")]
 
     matched    = []   # doctor prescribed AND AI suggested
-    extra      = []   # doctor prescribed but AI did NOT suggest
-    missed     = []   # AI suggested but doctor did NOT prescribe
+    missed     = []   # issues where the doctor prescribed none of the AI options
+    used_lines = set()
 
-    # Check each doctor prescription
-    for med in doctor_prescription:
-        if med.lower().strip() in ai_medicine_names:
-            # Find which test this medicine was for
-            for ai_med in ai_medicines:
-                if ai_med["name"].lower() == med.lower().strip():
-                    matched.append({
-                        "medicine": med,
-                        "test":     ai_med["test"],
-                        "issue":    ai_med["issue"]
-                    })
-                    break
+    for issue in issues:
+        options = [med["name"] for med in issue["medicines"]]
+        hits = [
+            (line, name)
+            for line in prescribed
+            for name in options
+            if _is_prescribed(name, line)
+        ]
+        if hits:
+            for line, name in hits:
+                used_lines.add(line)
+                matched.append({
+                    "medicine": name,
+                    "test":     issue["test"],
+                    "issue":    issue["issue"]
+                })
         else:
-            extra.append(med)
+            missed.append({
+                "name":    " or ".join(options),
+                "options": options,
+                "test":    issue["test"],
+                "issue":   issue["issue"]
+            })
 
-    # Check what AI suggested that doctor didn't prescribe
-    for ai_med in ai_medicines:
-        if ai_med["name"].lower() not in doctor_lower:
-            missed.append(ai_med)
+    # Doctor prescribed but AI did NOT suggest
+    extra = [line for line in prescribed if line not in used_lines]
 
     # Calculate match score (0-100)
-    total_ai = len(ai_medicines)
-    if total_ai == 0:
+    if not issues:
         match_score = 100  # no suggestions = nothing to match
     else:
-        match_score = round((len(matched) / total_ai) * 100)
+        match_score = round((len(issues) - len(missed)) / len(issues) * 100)
+
+    unique_suggested = {med["name"] for issue in issues for med in issue["medicines"]}
 
     return {
         "match_score":         match_score,
         "matched":             matched,
         "extra_prescriptions": extra,    # doctor added these (not in AI list)
-        "missed_suggestions":  missed,   # AI suggested but doctor skipped
-        "total_ai_suggested":  total_ai,
-        "total_prescribed":    len(doctor_prescription),
+        "missed_suggestions":  missed,   # issues the doctor did not cover
+        "total_issues":        len(issues),
+        "covered_issues":      len(issues) - len(missed),
+        "total_ai_suggested":  len(unique_suggested),
+        "total_prescribed":    len(prescribed),
     }
 
 
@@ -99,11 +125,12 @@ def print_prescription_check(report):
 
     # Missed suggestions (AI suggested but doctor didn't prescribe)
     if report["missed_suggestions"]:
-        print(f"\n⚠️  Missed Suggestions ({len(report['missed_suggestions'])}) — AI suggested but not prescribed:")
+        print(f"\n⚠️  Not Covered ({len(report['missed_suggestions'])}) — no suggested option was prescribed:")
         for m in report["missed_suggestions"]:
             print(f"   • {m['name']}  →  for {m['test']} ({m['issue']})")
 
     print(f"\n📊 Summary:")
+    print(f"   Issues covered  : {report['covered_issues']}/{report['total_issues']}")
     print(f"   AI suggested    : {report['total_ai_suggested']} medicines")
     print(f"   Doctor prescribed: {report['total_prescribed']} medicines")
     print(f"\n⚕️  REMINDER: Doctor has final authority. AI is advisory only.")

@@ -37,3 +37,5 @@ build/
 .ipynb_checkpoints/
 # add this line to .gitignore
 .streamlit/secrets.toml
+# Test cache
+.pytest_cache/
