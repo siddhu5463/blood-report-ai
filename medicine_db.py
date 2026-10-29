@@ -5,22 +5,40 @@
 # ONLY suggests medicines from our internal list - nothing external
 
 import json
+import logging
 import os
 
+from pdf_extractor import canonical_marker
 
-def load_medicines(json_path="medicines.json"):
+logger = logging.getLogger(__name__)
+
+# Look for medicines.json next to this file, so it works from any folder
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "medicines.json")
+
+
+def normalize_direction(issue):
+    """Turns the AI's wording ("High", "elevated", "Low (borderline)") into "High" / "Low"."""
+    issue = (issue or "").strip().lower()
+    if issue.startswith(("high", "elevated", "raised")):
+        return "High"
+    if issue.startswith(("low", "decreased", "reduced")):
+        return "Low"
+    return issue.title()
+
+
+def load_medicines(json_path=DEFAULT_DB_PATH):
     """
     Loads the medicine database from our JSON file.
     Returns a list of medicine dictionaries.
     """
     if not os.path.exists(json_path):
-        print(f"❌ medicines.json not found at {json_path}")
+        logger.error("❌ medicines.json not found at %s", json_path)
         return []
 
     with open(json_path, "r") as f:
         medicines = json.load(f)
 
-    print(f"✅ Loaded {len(medicines)} medicines from database")
+    logger.info("✅ Loaded %d medicines from database", len(medicines))
     return medicines
 
 
@@ -28,21 +46,24 @@ def find_medicines_for_flag(test_name, direction, medicines):
     """
     Finds medicines that treat a specific flagged blood value.
 
-    test_name = the blood test name  e.g. "Estradiol"
+    test_name = the blood test name  e.g. "Estradiol" or "LDL Cholesterol"
     direction = "High" or "Low"
     medicines = the full list loaded from medicines.json
 
     Returns list of matching medicines
     """
-    matches = []
+    marker    = canonical_marker(test_name)
+    direction = normalize_direction(direction)
+    matches   = []
 
     for med in medicines:
-        # Check if this medicine targets this test
-        targets_match    = test_name.lower() in [t.lower() for t in med["targets"]]
-        # Check if direction matches (High Estradiol needs a medicine for "High")
-        direction_match  = med["direction"].lower() == direction.lower()
+        # Products marked outside HRT scope are kept in the database but never suggested
+        if not med.get("within_hrt_scope", True):
+            continue
 
-        if targets_match and direction_match:
+        # "targets" maps each marker to the direction this medicine treats,
+        # e.g. Levothyroxine: {"TSH": "High", "Free T4": "Low"}
+        if med["targets"].get(marker) == direction:
             matches.append(med)
 
     return matches
@@ -62,7 +83,7 @@ def get_medicine_suggestions(flagged_values, medicines):
 
     for flag in flagged_values:
         test_name = flag.get("test", "")
-        direction = flag.get("issue", "")   # "High" or "Low"
+        direction = normalize_direction(flag.get("issue", ""))   # "High" or "Low"
         in_scope  = flag.get("within_hrt_scope", True)
 
         # If outside HRT scope, don't suggest medicine - refer to specialist
@@ -129,6 +150,8 @@ def print_suggestions(suggestions):
 
 # ---- TEST ----
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     # Load medicines from JSON file
     medicines = load_medicines()

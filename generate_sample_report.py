@@ -8,7 +8,6 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
-import random
 
 def generate_blood_report(filename="sample_blood_report.pdf"):
     """Creates a realistic-looking blood report PDF"""
@@ -106,18 +105,15 @@ def generate_blood_report(filename="sample_blood_report.pdf"):
         ("BOTTOMPADDING",(0,0), (-1,-1), 5),
         ("TOPPADDING",   (0,0), (-1,-1), 5),
         ("GRID",         (0,0), (-1,-1), 0.5, colors.HexColor("#DEE2E6")),
-
-        # Highlight HIGH values in red
-        ("TEXTCOLOR",    (4,2),  (4,2),  colors.red),   # Estradiol High
-        ("TEXTCOLOR",    (4,4),  (4,4),  colors.red),   # DHEA Low  
-        ("TEXTCOLOR",    (4,12), (4,12), colors.red),   # Glucose High
-        ("TEXTCOLOR",    (4,13), (4,13), colors.red),   # HbA1c High
-        ("TEXTCOLOR",    (4,18), (4,18), colors.red),   # Cholesterol High
-        ("TEXTCOLOR",    (4,20), (4,20), colors.red),   # LDL High
-        ("TEXTCOLOR",    (4,21), (4,21), colors.red),   # Triglycerides High
-        ("FONTNAME",     (4,2),  (4,2),  "Helvetica-Bold"),
-        ("FONTNAME",     (4,12), (4,12), "Helvetica-Bold"),
     ]))
+
+    # Highlight High/Low values in red (row numbers come from the STATUS column)
+    for row, cells in enumerate(blood_data[1:], start=1):
+        if cells[4] in ("High", "Low"):
+            blood_table.setStyle(TableStyle([
+                ("TEXTCOLOR", (4, row), (4, row), colors.red),
+                ("FONTNAME",  (4, row), (4, row), "Helvetica-Bold"),
+            ]))
 
     story.append(blood_table)
     story.append(Spacer(1, 0.3 * inch))
@@ -133,7 +129,7 @@ def generate_blood_report(filename="sample_blood_report.pdf"):
     # ---- BUILD THE PDF ----
     doc.build(story)
     print(f"✅ Sample blood report created: {filename}")
-    print(f"   Open it to see what it looks like!")
+    print("   Open it to see what it looks like!")
 
 
 # Run it

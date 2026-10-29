@@ -1,8 +1,10 @@
-pdfplumber
-reportlab
-google-genai
-python-dotenv
-streamlit
-plotly
-pandas
-groq
+# Version ranges, not exact pins: new minor/patch releases install fine,
+# but a new major version (which may break things) needs a deliberate update.
+pdfplumber>=0.11.4,<0.12
+reportlab>=4.2.5,<6
+google-genai>=1.10.0,<3
+pydantic>=2,<3
+python-dotenv>=1.0.1,<2
+streamlit>=1.43.2,<2
+plotly>=6.0.1,<8
+pandas>=2.2.3,<4

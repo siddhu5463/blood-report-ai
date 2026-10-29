@@ -8,7 +8,8 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-import json
+import io
+import os
 
 from pdf_extractor        import process_blood_report
 from ai_analyzer          import analyze_blood_report
@@ -21,6 +22,13 @@ st.set_page_config(
     page_icon="🩺",
     layout="wide"
 )
+
+# ── On Streamlit Cloud the API key lives in st.secrets — pass it on to ai_analyzer
+try:
+    if "GEMINI_API_KEY" in st.secrets and not os.getenv("GEMINI_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    pass  # no secrets.toml — fall back to .env / environment variable
 
 # ── Custom CSS for cleaner look
 st.markdown("""
@@ -69,8 +77,10 @@ def render_blood_values_chart(blood_values):
             colors_list.append("#dc3545")   # red
         elif status == "low":
             colors_list.append("#fd7e14")   # orange
-        else:
+        elif status == "normal":
             colors_list.append("#28a745")   # green
+        else:
+            colors_list.append("#6c757d")   # grey - no reference range to compare with
 
     fig = go.Figure(go.Bar(
         x=names, y=values,
@@ -86,6 +96,37 @@ def render_blood_values_chart(blood_values):
         showlegend=False
     )
     return fig
+
+
+# ════════════════════════════════════════════
+# CACHED STEPS
+# Streamlit re-runs this whole script on every click, so the slow steps are
+# cached: the same PDF is only parsed once and only sent to Gemini once.
+# ════════════════════════════════════════════
+
+class AnalysisFailed(Exception):
+    """Raised inside the cached call so that failed AI results are NOT cached (retry works)."""
+
+
+@st.cache_data(show_spinner=False)
+def cached_extract(file_bytes, sex):
+    # pdfplumber can read straight from memory — no temp file needed
+    return process_blood_report(io.BytesIO(file_bytes), sex=sex)
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _cached_analysis(blood_values, patient_info):
+    result = analyze_blood_report(blood_values, patient_info)
+    if "error" in result:
+        raise AnalysisFailed(result)
+    return result
+
+
+def get_analysis(blood_values, patient_info):
+    try:
+        return _cached_analysis(blood_values, patient_info)
+    except AnalysisFailed as failed:
+        return failed.args[0]
 
 
 # ════════════════════════════════════════════
@@ -107,6 +148,13 @@ with st.sidebar:
     st.markdown("3. Check medicine suggestions")
     st.markdown("4. Enter doctor's prescription")
     st.markdown("5. See match score")
+    st.divider()
+    sex_choice = st.selectbox(
+        "Patient sex (for reference ranges)",
+        ["Auto-detect from report", "Male", "Female"],
+        help="Some normal ranges differ by sex. Ranges printed on the report always take priority."
+    )
+    sex_override = None if sex_choice.startswith("Auto") else sex_choice
 
 # ── File Upload
 uploaded_file = st.file_uploader(
@@ -117,20 +165,30 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file:
 
-    # Save uploaded file temporarily
-    temp_path = f"temp_{uploaded_file.name}"
-    with open(temp_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
     # ── Run Phase 1
     with st.spinner("📄 Extracting blood values from PDF..."):
-        extracted = process_blood_report(temp_path)
+        extracted = cached_extract(uploaded_file.getvalue(), sex_override)
 
     if not extracted or not extracted["blood_values"]:
         st.error("❌ Could not extract blood values. Please check your PDF format.")
         st.stop()
 
     blood_values = extracted["blood_values"]
+    patient_info = extracted["patient_info"]
+
+    # Results for THIS report only — recomputed (from cache) on every run,
+    # so nothing from a previously uploaded report can leak into the tabs
+    analysis    = None
+    suggestions = None
+
+    detected = [f"{patient_info['age']} years" if "age" in patient_info else "age unknown",
+                patient_info.get("sex", "sex unknown")]
+    from_report = sum(1 for d in blood_values.values() if d.get("ref_source") == "report")
+    st.caption(f"👤 Patient: {', '.join(detected)} · "
+               f"reference ranges from the report for {from_report}/{len(blood_values)} tests")
+    if "sex" not in patient_info:
+        st.warning("Patient sex not found on the report — using general (male) default ranges. "
+                   "Set it in the sidebar if needed.")
 
     # ════════════════════════
     # TAB LAYOUT
@@ -150,13 +208,17 @@ if uploaded_file:
         total   = len(blood_values)
         high    = sum(1 for d in blood_values.values() if d["status"] == "High")
         low     = sum(1 for d in blood_values.values() if d["status"] == "Low")
-        normal  = total - high - low
+        normal  = sum(1 for d in blood_values.values() if d["status"] == "Normal")
+        unknown = total - high - low - normal
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Tests",    total)
         col2.metric("🔴 High",        high)
         col3.metric("🟠 Low",         low)
         col4.metric("🟢 Normal",      normal)
+        if unknown:
+            st.caption(f"⚪ {unknown} test(s) have no reference range for this patient or unit, "
+                       "so they are not marked High or Low.")
 
         # Chart
         st.plotly_chart(render_blood_values_chart(blood_values), use_container_width=True)
@@ -180,59 +242,55 @@ if uploaded_file:
         st.subheader("🧠 AI Analysis")
 
         with st.spinner("🤖 Asking Gemini AI to analyze blood values..."):
-            analysis = analyze_blood_report(blood_values)
+            result = get_analysis(blood_values, patient_info)
 
-        if "error" in analysis:
-            st.error(f"AI Error: {analysis['error']}")
-            st.stop()
-
-        # Overall status banner
-        status = analysis.get("overall_status", "Unknown")
-        if status == "Good":
-            st.success(f"✅ Overall Status: {status}")
-        elif status == "Needs Attention":
-            st.warning(f"⚠️ Overall Status: {status}")
+        if "error" in result:
+            st.error(f"AI Error: {result['error']}")
+            st.button("🔁 Retry AI Analysis")  # clicking re-runs the app, and failed results are not cached
         else:
-            st.error(f"🚨 Overall Status: {status}")
+            analysis = result
 
-        st.info(f"📋 **Summary:** {analysis.get('summary', 'N/A')}")
+            # Overall status banner
+            status = analysis.get("overall_status", "Unknown")
+            if status == "Good":
+                st.success(f"✅ Overall Status: {status}")
+            elif status == "Needs Attention":
+                st.warning(f"⚠️ Overall Status: {status}")
+            else:
+                st.error(f"🚨 Overall Status: {status}")
 
-        # Referral alert
-        if analysis.get("refer_to_specialist"):
-            st.error(f"🏥 **REFER TO SPECIALIST:** {analysis.get('referral_reason')}")
+            st.info(f"📋 **Summary:** {analysis.get('summary', 'N/A')}")
 
-        # Flagged values
-        flagged = analysis.get("flagged_values", [])
-        if flagged:
-            st.subheader(f"🚩 Flagged Values ({len(flagged)} issues)")
-            for item in flagged:
-                scope_label = "✅ Within HRT Scope" if item.get("within_hrt_scope") else "⛔ Outside Scope"
-                with st.expander(f"{item.get('test')} — {item.get('issue')} | {scope_label}"):
-                    col1, col2 = st.columns(2)
-                    col1.markdown(f"**Value:** {item.get('value')}")
-                    col1.markdown(f"**Issue:** {item.get('issue')}")
-                    col2.markdown(f"**Scope:** {scope_label}")
-                    col2.markdown(f"**Action:** {item.get('action')}")
-                    st.markdown(f"**Explanation:** {item.get('explanation')}")
-        else:
-            st.success("✅ No flagged values — all results are normal!")
+            # Referral alert
+            if analysis.get("refer_to_specialist"):
+                st.error(f"🏥 **REFER TO SPECIALIST:** {analysis.get('referral_reason')}")
 
-        # Store analysis in session so other tabs can use it
-        st.session_state["analysis"] = analysis
+            # Flagged values
+            flagged = analysis.get("flagged_values", [])
+            if flagged:
+                st.subheader(f"🚩 Flagged Values ({len(flagged)} issues)")
+                for item in flagged:
+                    scope_label = "✅ Within HRT Scope" if item.get("within_hrt_scope") else "⛔ Outside Scope"
+                    with st.expander(f"{item.get('test')} — {item.get('issue')} | {scope_label}"):
+                        col1, col2 = st.columns(2)
+                        col1.markdown(f"**Value:** {item.get('value')}")
+                        col1.markdown(f"**Issue:** {item.get('issue')}")
+                        col2.markdown(f"**Scope:** {scope_label}")
+                        col2.markdown(f"**Action:** {item.get('action')}")
+                        st.markdown(f"**Explanation:** {item.get('explanation')}")
+            else:
+                st.success("✅ No flagged values — all results are normal!")
 
     # ── TAB 3: Medicine Suggestions
     with tab3:
         st.subheader("💊 Medicine Suggestions")
 
-        if "analysis" not in st.session_state:
-            st.info("👆 Please run AI Analysis in Tab 2 first.")
+        if analysis is None:
+            st.info("👈 Suggestions need the AI analysis — see the 🧠 AI Analysis tab.")
         else:
             medicines   = load_medicines()
-            flagged     = st.session_state["analysis"].get("flagged_values", [])
+            flagged     = analysis.get("flagged_values", [])
             suggestions = get_medicine_suggestions(flagged, medicines)
-
-            # Store for Tab 4
-            st.session_state["suggestions"] = suggestions
 
             for item in suggestions:
                 if item["action"] == "REFER TO SPECIALIST":
@@ -253,8 +311,8 @@ if uploaded_file:
     with tab4:
         st.subheader("📋 Prescription Match Checker")
 
-        if "suggestions" not in st.session_state:
-            st.info("👆 Please complete Tab 2 and Tab 3 first.")
+        if suggestions is None:
+            st.info("👈 The prescription check needs the AI analysis — see the 🧠 AI Analysis tab.")
         else:
             st.markdown("Enter the doctor's prescribed medicines below (one per line):")
 
@@ -275,7 +333,7 @@ if uploaded_file:
                         if line.strip()
                     ]
 
-                    report = check_prescription(prescribed, st.session_state["suggestions"])
+                    report = check_prescription(prescribed, suggestions)
 
                     # Gauge chart
                     st.plotly_chart(
@@ -284,9 +342,9 @@ if uploaded_file:
                     )
 
                     col1, col2, col3 = st.columns(3)
-                    col1.metric("AI Suggested",      report["total_ai_suggested"])
-                    col2.metric("Doctor Prescribed", report["total_prescribed"])
-                    col3.metric("Matched",           len(report["matched"]))
+                    col1.metric("Issues with Suggestions", report["total_issues"])
+                    col2.metric("Doctor Prescribed",       report["total_prescribed"])
+                    col3.metric("Issues Covered",          report["covered_issues"])
 
                     # Matched
                     if report["matched"]:
@@ -302,7 +360,7 @@ if uploaded_file:
 
                     # Missed
                     if report["missed_suggestions"]:
-                        st.warning(f"⚠️ **Missed ({len(report['missed_suggestions'])})** — AI suggested but not prescribed")
+                        st.warning(f"⚠️ **Not Covered ({len(report['missed_suggestions'])})** — none of the suggested options were prescribed")
                         for m in report["missed_suggestions"]:
                             st.markdown(f"- **{m['name']}** → for {m['test']} ({m['issue']})")
 
